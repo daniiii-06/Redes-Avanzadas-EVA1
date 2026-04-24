@@ -1,7 +1,6 @@
 import time
 import json
 import requests
-import subprocess
 from netmiko import ConnectHandler
 from netmiko.exceptions import NetmikoTimeoutException, NetmikoAuthenticationException
 
@@ -14,9 +13,9 @@ CISCO_PASS = "cisco"
 MT_USER = "admin"
 MT_PASS = "admin"
 
-OOB_R1_IP = "192.168.120.10"
-OOB_R2_IP = "192.168.130.20"
-OOB_R3_IP = "192.168.140.30"
+OOB_R1_IP = "192.168.122.10"
+OOB_R2_IP = "192.168.122.20"
+OOB_R3_IP = "192.168.122.30"
 
 VPN_PSK = "Inacap2026NetDevOps"
 
@@ -257,14 +256,7 @@ def config_r3():
         except Exception as e:
             print(f"    [ERROR GENERAL] manipulando {endpoint}: {e}")
 
-def setup_docker_network():
-    print("Configurando interfaces de red del Docker automáticamente...")
-    # Asignamos temporalmente las IPs necesarias para alcanzar las redes de gestión
-    networks = ["192.168.120.100/24", "192.168.130.100/24", "192.168.140.100/24"]
-    for net in networks:
-        # Se oculta el error por si la IP ya fue configurada previamente (ej. re-ejecuciones)
-        subprocess.run(["ip", "addr", "add", net, "dev", "eth0"], stderr=subprocess.DEVNULL)
-    print("Subredes de gestión configuradas en la interfaz eth0.\n")
+
 
 def verify_vpn():
     print("\nIniciando prueba automática de tráfico VPN desde R1 hacia R3...")
@@ -272,13 +264,14 @@ def verify_vpn():
         "device_type": "cisco_ios",
         "ip": OOB_R1_IP,
         "username": CISCO_USER,
-        "password": CISCO_PASS,
-        "fast_cli": True
+        "password": CISCO_PASS
+        # Sin fast_cli aquí para evitar choques de timeouts con el comando ping
     }
     try:
         net_connect = ConnectHandler(**device)
         print(" -> Enviando PING usando la Loopback10 para forzar a levantar IPsec...")
-        ping_out = net_connect.send_command("ping 192.168.30.1 source Loopback10")
+        # read_timeout alto porque si el ping falla toma ~10 segundos en Cisco
+        ping_out = net_connect.send_command("ping 192.168.30.1 source Loopback10", read_timeout=15)
         print(ping_out)
         
         # Le damos 2 segundos para que las Security Associations (SA) terminen
@@ -298,8 +291,6 @@ if __name__ == "__main__":
     print("="*60)
     print(" INICIANDO AUTOMATIZACION NETDEVOPS (HÍBRIDA SSH/API)")
     print("="*60)
-    
-    setup_docker_network()
     
     config_r2()
     print("-" * 60)
