@@ -84,8 +84,9 @@ def config_r1():
         " no shutdown",
         " exit",
         
-        # Ruta por defecto hacia R2 (ISP)
-        "ip route 0.0.0.0 0.0.0.0 200.1.12.2",
+        # Rutas especificas hacia la WAN y LAN de R3 (Para evitar choque con la red OOB)
+        "ip route 200.1.23.0 255.255.255.252 200.1.12.2",
+        "ip route 192.168.30.0 255.255.255.0 200.1.12.2",
         
         # IPSEC FASE 1 (ISAKMP)
         "crypto isakmp policy 10",
@@ -145,9 +146,10 @@ def config_r3():
     network_endpoints = [
         ("/rest/interface/bridge", {"name": "LO30"}),
         ("/rest/ip/address", {"address": "192.168.30.1/24", "interface": "LO30"}),
-        ("/rest/ip/address", {"address": "200.1.23.2/30", "interface": "ether2"}),
-        ("/rest/ip/address", {"address": "200.1.13.2/30", "interface": "ether3"}),
-        ("/rest/ip/route", {"dst-address": "0.0.0.0/0", "gateway": "200.1.23.1"})
+        ("/rest/ip/address", {"address": "200.1.23.2/30", "interface": "ether3"}),
+        ("/rest/ip/address", {"address": "200.1.13.2/30", "interface": "ether2"}),
+        ("/rest/ip/route", {"dst-address": "200.1.12.0/30", "gateway": "200.1.23.1"}),
+        ("/rest/ip/route", {"dst-address": "192.168.10.0/24", "gateway": "200.1.23.1"})
     ]
     
     for endpoint, payload in network_endpoints:
@@ -164,6 +166,20 @@ def config_r3():
         except Exception as e:
             pass
 
+    # Borrado previo de configuraciones IPsec antiguas en R3 para aplicar las nuevas (Evitamos el estado 'invalid')
+    ipsec_components = ["policy", "peer", "proposal", "identity", "profile"]
+    print(" -> Limpiando configuración IPsec vieja en R3...")
+    for comp in ipsec_components:
+        try:
+            get_req = requests.get(f"{base_url_r3}/rest/ip/ipsec/{comp}", auth=auth, headers=headers, timeout=5)
+            if get_req.status_code == 200:
+                for item in get_req.json():
+                    item_id = item.get(".id")
+                    if item_id and item.get("name") != "default":
+                        requests.delete(f"{base_url_r3}/rest/ip/ipsec/{comp}/{item_id}", auth=auth, headers=headers)
+        except Exception:
+            pass
+            
     # 2. Configuración IPsec
     base_url = f"{base_url_r3}/rest/ip/ipsec"
     # Notación usada en REST API MikroTik: PUT crea un nuevo objeto
