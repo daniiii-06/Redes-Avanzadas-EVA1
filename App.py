@@ -1,6 +1,7 @@
 import time
 import json
 import requests
+import subprocess
 from netmiko import ConnectHandler
 from netmiko.exceptions import NetmikoTimeoutException, NetmikoAuthenticationException
 
@@ -122,12 +123,6 @@ def config_r1():
         net_connect = ConnectHandler(**device)
         output = net_connect.send_config_set(commands)
         print("R1 IPsec configurado exitosamente.")
-        
-        # Validar estado VPN
-        check = net_connect.send_command("show crypto isakmp sa")
-        print("\nEstado ISAKMP R1:")
-        print(check)
-        
         net_connect.disconnect()
     except NetmikoTimeoutException:
         print("ERROR: Timeout conectando a R1 OOB.")
@@ -164,8 +159,9 @@ def config_r3():
                 if 'already' in error_detail or 'exists' in error_detail or 'repeat' in error_detail:
                     continue  # Si ya existe, lo ignoramos de forma limpia
             req.raise_for_status()
+            print(f"    [ÉXITO] {endpoint} configurado.")
         except requests.exceptions.HTTPError:
-            print(f"    [INFO] Elemento en {endpoint} posiblemente ya configurado o repetido.")
+            print(f"    [INFO] Elemento en {endpoint} ya existía o repetido.")
         except Exception as e:
             pass
 
@@ -185,6 +181,7 @@ def config_r3():
     peer_data = {
         "name": "peer1",
         "address": "200.1.12.1/32",
+        "local-address": "200.1.23.2",
         "profile": "profile1",
         "exchange-mode": "main"
     }
@@ -260,16 +257,57 @@ def config_r3():
         except Exception as e:
             print(f"    [ERROR GENERAL] manipulando {endpoint}: {e}")
 
+def setup_docker_network():
+    print("Configurando interfaces de red del Docker automáticamente...")
+    # Asignamos temporalmente las IPs necesarias para alcanzar las redes de gestión
+    networks = ["192.168.120.100/24", "192.168.130.100/24", "192.168.140.100/24"]
+    for net in networks:
+        # Se oculta el error por si la IP ya fue configurada previamente (ej. re-ejecuciones)
+        subprocess.run(["ip", "addr", "add", net, "dev", "eth0"], stderr=subprocess.DEVNULL)
+    print("Subredes de gestión configuradas en la interfaz eth0.\n")
+
+def verify_vpn():
+    print("\nIniciando prueba automática de tráfico VPN desde R1 hacia R3...")
+    device = {
+        "device_type": "cisco_ios",
+        "ip": OOB_R1_IP,
+        "username": CISCO_USER,
+        "password": CISCO_PASS,
+        "fast_cli": True
+    }
+    try:
+        net_connect = ConnectHandler(**device)
+        print(" -> Enviando PING usando la Loopback10 para forzar a levantar IPsec...")
+        ping_out = net_connect.send_command("ping 192.168.30.1 source Loopback10")
+        print(ping_out)
+        
+        # Le damos 2 segundos para que las Security Associations (SA) terminen
+        time.sleep(2)
+        check = net_connect.send_command("show crypto isakmp sa")
+        print("\n -> Estado de ISAKMP (Fase 1) en R1:")
+        print(check)
+        check2 = net_connect.send_command("show crypto ipsec sa | include encrypt")
+        print("\n -> Paquetes Encriptados/Desencriptados (Fase 2) en R1:")
+        print(check2)
+        
+        net_connect.disconnect()
+    except Exception as e:
+        print(f"Error realizando la prueba final en R1: {e}")
+
 if __name__ == "__main__":
     print("="*60)
     print(" INICIANDO AUTOMATIZACION NETDEVOPS (HÍBRIDA SSH/API)")
     print("="*60)
+    
+    setup_docker_network()
     
     config_r2()
     print("-" * 60)
     config_r1()
     print("-" * 60)
     config_r3()
+    print("-" * 60)
+    verify_vpn()
     
     print("="*60)
     print(" AUTOMATIZACION FINALIZADA")
