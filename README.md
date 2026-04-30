@@ -13,3 +13,6 @@ Requests: Interacción con la API REST nativa de R3.
 JSON: Parseo de respuestas y confirmación de éxito vía json.loads.  
 Infraestructura: GNS3, Docker (Imagen python:3.10-slim).  
 
+Integrantes:
+Daniel Sagardia
+Benjamin Sepúlveda
