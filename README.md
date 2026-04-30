@@ -6,6 +6,7 @@ El objetivo principal es la configuración automática de un túnel VPN IPsec en
 La solución utiliza un nodo de automatización basado en Docker que ejecuta un script de Python, combinando protocolos tradicionales como SSH con tecnologías modernas de API REST
 
 Herraminetas:
+
 Lenguaje: Python 3.10 (Siguiendo estándares PEP8).  
 Librerías Principales:Netmiko: 
 Automatización SSH para equipos Cisco (R1 y R2).  
